@@ -11,8 +11,10 @@
 
 #include "byedpi/error.h"
 #include "main.h"
+#include "byedpi/params.h"
 
 extern int server_fd;
+
 static int g_proxy_running = 0;
 static pthread_mutex_t g_proxy_mutex = PTHREAD_MUTEX_INITIALIZER;
 
