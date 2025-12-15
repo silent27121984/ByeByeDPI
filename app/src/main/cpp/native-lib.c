@@ -12,6 +12,7 @@
 #include "byedpi/error.h"
 #include "main.h"
 #include "byedpi/params.h"
+#include "byedpi/proxy.h"
 
 extern int server_fd;
 
@@ -141,11 +142,27 @@ Java_io_github_dovecoteescapee_byedpi_core_ByeDpiProxy_jniStopProxy(__attribute_
         return -1;
     }
 
+    // Устанавливаем флаг остановки в event loop
+    pthread_mutex_lock(&g_pool_mutex);
+    if (g_event_pool != NULL) {
+        g_event_pool->brk = 1;
+        LOG(LOG_S, "set pool->brk = 1 to stop event loop (pool=%p)", g_event_pool);
+    } else {
+        LOG(LOG_S, "g_event_pool is NULL, cannot set brk flag");
+    }
+    pthread_mutex_unlock(&g_pool_mutex);
+    
+    // Выполняем shutdown для остановки приема новых соединений
+    // НЕ закрываем server_fd здесь - он будет закрыт в start_event_loop()
+    // после выхода из loop_event(), чтобы избежать двойного закрытия
     int ret = shutdown(server_fd, SHUT_RDWR);
     if (ret < 0) {
         LOG(LOG_S, "shutdown failed: %s (errno: %d)", strerror(errno), errno);
+    } else {
+        LOG(LOG_S, "server socket shutdown (fd: %d)", server_fd);
     }
     
+    // НЕ закрываем server_fd здесь - он будет закрыт в start_event_loop()
     g_proxy_running = 0;
     pthread_mutex_unlock(&g_proxy_mutex);
 
@@ -156,24 +173,36 @@ JNIEXPORT jint JNICALL
 Java_io_github_dovecoteescapee_byedpi_core_ByeDpiProxy_jniForceClose(__attribute__((unused)) JNIEnv *env, __attribute__((unused)) jobject thiz) {
     pthread_mutex_lock(&g_proxy_mutex);
     
-    LOG(LOG_S, "closing server socket (fd: %d)", server_fd);
+    LOG(LOG_S, "force closing server socket (fd: %d)", server_fd);
 
     if (server_fd < 0) {
-        LOG(LOG_S, "invalid server_fd: %d", server_fd);
+        LOG(LOG_S, "server socket already closed or invalid (fd: %d)", server_fd);
         g_proxy_running = 0;
         pthread_mutex_unlock(&g_proxy_mutex);
-        return -1;
+        return 0; // Не ошибка, если уже закрыт
     }
 
+    // Устанавливаем флаг остановки в event loop
+    pthread_mutex_lock(&g_pool_mutex);
+    if (g_event_pool != NULL) {
+        g_event_pool->brk = 1;
+        LOG(LOG_S, "set pool->brk = 1 to stop event loop (pool=%p)", g_event_pool);
+    } else {
+        LOG(LOG_S, "g_event_pool is NULL, cannot set brk flag");
+    }
+    pthread_mutex_unlock(&g_pool_mutex);
+
+    // Сначала shutdown, затем close
+    shutdown(server_fd, SHUT_RDWR);
+    
     if (close(server_fd) == -1) {
         LOG(LOG_S, "failed to close server socket (fd: %d): %s (errno: %d)", 
             server_fd, strerror(errno), errno);
-        g_proxy_running = 0;
-        pthread_mutex_unlock(&g_proxy_mutex);
-        return -1;
+    } else {
+        LOG(LOG_S, "server socket force closed (fd: %d)", server_fd);
     }
-
-    LOG(LOG_S, "proxy socket force close");
+    
+    server_fd = -1;
     g_proxy_running = 0;
     pthread_mutex_unlock(&g_proxy_mutex);
 

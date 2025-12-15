@@ -144,19 +144,21 @@ class ByeDpiVpnService : LifecycleVpnService() {
     private suspend fun stop() {
         Log.i(TAG, "Stopping")
 
-        mutex.withLock {
-            try {
-                withContext(Dispatchers.IO) {
-                    stopProxy()
-                    stopTun2Socks()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to stop VPN", e)
+        try {
+            withContext(Dispatchers.IO) {
+                stopProxy()
+                stopTun2Socks()
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Отмена job - это нормально при остановке
+            Log.d(TAG, "Job cancellation during stop (normal)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop VPN", e)
+        } finally {
+            // Всегда обновляем статус и останавливаем сервис, даже если произошла ошибка
+            updateStatus(ServiceStatus.Disconnected)
+            stopSelf()
         }
-
-        updateStatus(ServiceStatus.Disconnected)
-        stopSelf()
     }
 
     private fun startProxy() {
@@ -191,8 +193,14 @@ class ByeDpiVpnService : LifecycleVpnService() {
                     Log.e(TAG, "Proxy stopped with code $code")
                     updateStatus(ServiceStatus.Failed)
                 } else {
+                    // Код 0 означает нормальное завершение
+                    Log.i(TAG, "Proxy stopped normally")
                     updateStatus(ServiceStatus.Disconnected)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Отмена job - это нормальное завершение при остановке
+                Log.i(TAG, "Proxy job was cancelled (normal shutdown)")
+                updateStatus(ServiceStatus.Disconnected)
             } catch (e: Exception) {
                 Log.e(TAG, "Error in proxy execution", e)
                 updateStatus(ServiceStatus.Failed)
@@ -208,19 +216,34 @@ class ByeDpiVpnService : LifecycleVpnService() {
     private suspend fun stopProxy() {
         Log.i(TAG, "Stopping proxy")
 
-        mutex.withLock {
-            if (status == ServiceStatus.Disconnected) {
-                Log.w(TAG, "Proxy already disconnected")
-                return
-            }
-        }
+        // Получаем currentJob без блокировки, чтобы избежать deadlock
+        val currentJob = mutex.withLock { proxyJob }
 
         try {
-            byeDpiProxy.stopProxy()
-            proxyJob?.cancel()
+            // Сначала пытаемся остановить прокси через JNI
+            // Всегда вызываем, даже если status уже Disconnected,
+            // чтобы убедиться, что native proxy действительно остановлен
+            try {
+                Log.d(TAG, "Calling byeDpiProxy.stopProxy()")
+                val result = byeDpiProxy.stopProxy()
+                Log.d(TAG, "byeDpiProxy.stopProxy() returned: $result")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop proxy via JNI, trying force close", e)
+                try {
+                    Log.d(TAG, "Calling byeDpiProxy.jniForceClose()")
+                    val result = byeDpiProxy.jniForceClose()
+                    Log.d(TAG, "byeDpiProxy.jniForceClose() returned: $result")
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to force close proxy", e2)
+                }
+            }
 
+            // Затем отменяем job
+            currentJob?.cancel()
+
+            // Ждем завершения job с таймаутом
             val completed = withTimeoutOrNull(5000) {
-                proxyJob?.join()
+                currentJob?.join()
                 true
             }
 
@@ -233,10 +256,20 @@ class ByeDpiVpnService : LifecycleVpnService() {
                 }
             }
 
-            proxyJob = null
+            mutex.withLock {
+                proxyJob = null
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Отмена job - это нормально при остановке
+            Log.d(TAG, "Proxy job cancellation during stop (normal)")
+            mutex.withLock {
+                proxyJob = null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to close proxyJob", e)
-            proxyJob = null
+            mutex.withLock {
+                proxyJob = null
+            }
         }
 
         Log.i(TAG, "Proxy stopped")

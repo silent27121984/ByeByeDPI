@@ -36,14 +36,16 @@ object ServiceManager {
                 Log.i(TAG, "Stopping VPN")
                 val intent = Intent(context, ByeDpiVpnService::class.java)
                 intent.action = STOP_ACTION
-                ContextCompat.startForegroundService(context, intent)
+                // Используем startService вместо startForegroundService для остановки
+                context.startService(intent)
             }
 
             Mode.Proxy -> {
                 Log.i(TAG, "Stopping proxy")
                 val intent = Intent(context, ByeDpiProxyService::class.java)
                 intent.action = STOP_ACTION
-                ContextCompat.startForegroundService(context, intent)
+                // Используем startService вместо startForegroundService для остановки
+                context.startService(intent)
             }
         }
     }

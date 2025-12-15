@@ -130,14 +130,19 @@ class ByeDpiProxyService : LifecycleService() {
     private suspend fun stop() {
         Log.i(TAG, "Stopping")
 
-        mutex.withLock {
-            withContext(Dispatchers.IO) {
-                stopProxy()
+        try {
+            mutex.withLock {
+                withContext(Dispatchers.IO) {
+                    stopProxy()
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in stop()", e)
+        } finally {
+            // Всегда обновляем статус и останавливаем сервис, даже если произошла ошибка
+            updateStatus(ServiceStatus.Disconnected)
+            stopSelf()
         }
-
-        updateStatus(ServiceStatus.Disconnected)
-        stopSelf()
     }
 
     private fun startProxy() {
@@ -189,19 +194,37 @@ class ByeDpiProxyService : LifecycleService() {
     private suspend fun stopProxy() {
         Log.i(TAG, "Stopping proxy")
 
-        mutex.withLock {
-            if (status == ServiceStatus.Disconnected) {
+        val currentJob = mutex.withLock {
+            val currentStatus = status
+            if (currentStatus == ServiceStatus.Disconnected) {
                 Log.w(TAG, "Proxy already disconnected")
+                // Убеждаемся, что proxyJob очищен
+                proxyJob?.cancel()
+                proxyJob = null
                 return
             }
+            proxyJob
         }
 
         try {
-            proxy.stopProxy()
-            proxyJob?.cancel()
+            // Сначала отменяем job, чтобы он не продолжал работать
+            currentJob?.cancel()
+            
+            // Затем пытаемся остановить прокси через JNI
+            try {
+                proxy.stopProxy()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop proxy via JNI, trying force close", e)
+                try {
+                    proxy.jniForceClose()
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to force close proxy", e2)
+                }
+            }
 
+            // Ждем завершения job с таймаутом
             val completed = withTimeoutOrNull(5000) {
-                proxyJob?.join()
+                currentJob?.join()
                 true
             }
 
@@ -214,10 +237,14 @@ class ByeDpiProxyService : LifecycleService() {
                 }
             }
 
-            proxyJob = null
+            mutex.withLock {
+                proxyJob = null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to close proxyJob", e)
-            proxyJob = null
+            mutex.withLock {
+                proxyJob = null
+            }
         }
 
         Log.i(TAG, "Proxy stopped")

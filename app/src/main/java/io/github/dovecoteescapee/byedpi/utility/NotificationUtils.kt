@@ -49,7 +49,7 @@ fun createConnectionNotification(
                 context,
                 0,
                 Intent(context, service).setAction(PAUSE_ACTION),
-                PendingIntent.FLAG_IMMUTABLE,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         )
         .addAction(0, context.getString(R.string.service_stop_btn),
@@ -57,7 +57,7 @@ fun createConnectionNotification(
                 context,
                 0,
                 Intent(context, service).setAction(STOP_ACTION),
-                PendingIntent.FLAG_IMMUTABLE,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         )
         .setContentIntent(
@@ -87,7 +87,7 @@ fun createPauseNotification(
                 context,
                 0,
                 Intent(context, service).setAction(RESUME_ACTION),
-                PendingIntent.FLAG_IMMUTABLE,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         )
         .setContentIntent(
