@@ -99,6 +99,9 @@ dependencies {
 
 tasks.register<Exec>("runNdkBuild") {
     group = "build"
+    
+    // Убеждаемся, что submodules инициализированы перед сборкой NDK
+    dependsOn(rootProject.tasks.named("initSubmodules"))
 
     val ndkDir = android.ndkDirectory
     executable = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
@@ -117,5 +120,7 @@ tasks.register<Exec>("runNdkBuild") {
 }
 
 tasks.preBuild {
+    // Сначала инициализируем submodules, потом собираем NDK
+    dependsOn(rootProject.tasks.named("initSubmodules"))
     dependsOn("runNdkBuild")
 }
