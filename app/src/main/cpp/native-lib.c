@@ -1,4 +1,7 @@
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include <jni.h>
 #include <getopt.h>
@@ -11,6 +14,7 @@
 
 extern int server_fd;
 static int g_proxy_running = 0;
+static pthread_mutex_t g_proxy_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct params default_params = {
         .await_int = 10,
@@ -36,19 +40,29 @@ void reset_params(void) {
 
 JNIEXPORT jint JNICALL
 Java_io_github_dovecoteescapee_byedpi_core_ByeDpiProxy_jniStartProxy(JNIEnv *env, __attribute__((unused)) jobject thiz, jobjectArray args) {
+    pthread_mutex_lock(&g_proxy_mutex);
+    
     if (g_proxy_running) {
         LOG(LOG_S, "proxy already running");
+        pthread_mutex_unlock(&g_proxy_mutex);
         return -1;
     }
 
     int argc = (*env)->GetArrayLength(env, args);
-    char **argv = calloc(argc, sizeof(char *));
-
-    if (!argv) {
-        LOG(LOG_S, "failed to allocate memory for argv");
+    if (argc <= 0) {
+        LOG(LOG_S, "invalid args count: %d", argc);
+        pthread_mutex_unlock(&g_proxy_mutex);
         return -1;
     }
 
+    char **argv = calloc(argc, sizeof(char *));
+    if (!argv) {
+        LOG(LOG_S, "failed to allocate memory for argv");
+        pthread_mutex_unlock(&g_proxy_mutex);
+        return -1;
+    }
+
+    int error = 0;
     for (int i = 0; i < argc; i++) {
         jstring arg = (jstring) (*env)->GetObjectArrayElement(env, args, i);
 
@@ -58,24 +72,49 @@ Java_io_github_dovecoteescapee_byedpi_core_ByeDpiProxy_jniStartProxy(JNIEnv *env
         }
 
         const char *arg_str = (*env)->GetStringUTFChars(env, arg, 0);
-        argv[i] = arg_str ? strdup(arg_str) : NULL;
-
-        if (arg_str) (*env)->ReleaseStringUTFChars(env, arg, arg_str);
+        if (arg_str) {
+            argv[i] = strdup(arg_str);
+            if (!argv[i]) {
+                LOG(LOG_S, "failed to duplicate string at index %d", i);
+                error = 1;
+                (*env)->ReleaseStringUTFChars(env, arg, arg_str);
+                (*env)->DeleteLocalRef(env, arg);
+                break;
+            }
+            (*env)->ReleaseStringUTFChars(env, arg, arg_str);
+        } else {
+            argv[i] = NULL;
+        }
 
         (*env)->DeleteLocalRef(env, arg);
+    }
+
+    if (error) {
+        for (int i = 0; i < argc; i++) {
+            if (argv[i]) free(argv[i]);
+        }
+        free(argv);
+        pthread_mutex_unlock(&g_proxy_mutex);
+        return -1;
     }
     
     LOG(LOG_S, "starting proxy with %d args", argc);
     reset_params();
     g_proxy_running = 1;
     optind = 1;
+    pthread_mutex_unlock(&g_proxy_mutex);
 
     int result = main(argc, argv);
 
     LOG(LOG_S, "proxy return code %d", result);
+    
+    pthread_mutex_lock(&g_proxy_mutex);
     g_proxy_running = 0;
+    pthread_mutex_unlock(&g_proxy_mutex);
 
-    for (int i = 0; i < argc; i++) free(argv[i]);
+    for (int i = 0; i < argc; i++) {
+        if (argv[i]) free(argv[i]);
+    }
     free(argv);
 
     return result;
@@ -85,28 +124,56 @@ JNIEXPORT jint JNICALL
 Java_io_github_dovecoteescapee_byedpi_core_ByeDpiProxy_jniStopProxy(__attribute__((unused)) JNIEnv *env, __attribute__((unused)) jobject thiz) {
     LOG(LOG_S, "send shutdown to proxy");
 
+    pthread_mutex_lock(&g_proxy_mutex);
+    
     if (!g_proxy_running) {
         LOG(LOG_S, "proxy is not running");
+        pthread_mutex_unlock(&g_proxy_mutex);
         return -1;
     }
 
-    shutdown(server_fd, SHUT_RDWR);
+    if (server_fd < 0) {
+        LOG(LOG_S, "invalid server_fd: %d", server_fd);
+        g_proxy_running = 0;
+        pthread_mutex_unlock(&g_proxy_mutex);
+        return -1;
+    }
+
+    int ret = shutdown(server_fd, SHUT_RDWR);
+    if (ret < 0) {
+        LOG(LOG_S, "shutdown failed: %s (errno: %d)", strerror(errno), errno);
+    }
+    
     g_proxy_running = 0;
+    pthread_mutex_unlock(&g_proxy_mutex);
 
     return 0;
 }
 
 JNIEXPORT jint JNICALL
 Java_io_github_dovecoteescapee_byedpi_core_ByeDpiProxy_jniForceClose(__attribute__((unused)) JNIEnv *env, __attribute__((unused)) jobject thiz) {
+    pthread_mutex_lock(&g_proxy_mutex);
+    
     LOG(LOG_S, "closing server socket (fd: %d)", server_fd);
 
+    if (server_fd < 0) {
+        LOG(LOG_S, "invalid server_fd: %d", server_fd);
+        g_proxy_running = 0;
+        pthread_mutex_unlock(&g_proxy_mutex);
+        return -1;
+    }
+
     if (close(server_fd) == -1) {
-        LOG(LOG_S, "failed to close server socket (fd: %d)", server_fd);
+        LOG(LOG_S, "failed to close server socket (fd: %d): %s (errno: %d)", 
+            server_fd, strerror(errno), errno);
+        g_proxy_running = 0;
+        pthread_mutex_unlock(&g_proxy_mutex);
         return -1;
     }
 
     LOG(LOG_S, "proxy socket force close");
     g_proxy_running = 0;
+    pthread_mutex_unlock(&g_proxy_mutex);
 
     return 0;
 }

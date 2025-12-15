@@ -75,3 +75,17 @@ fun SharedPreferences.getProxyIpAndPort(): Pair<String, String> {
 
     return Pair(ip, port)
 }
+
+fun SharedPreferences.getProxyIpAndPortValidated(): Pair<String, Int>? {
+    val (ip, portStr) = getProxyIpAndPort()
+    val port = portStr.toIntOrNull() ?: return null
+    
+    if (!io.github.dovecoteescapee.byedpi.utility.checkIp(ip)) {
+        return null
+    }
+    if (!io.github.dovecoteescapee.byedpi.utility.checkPort(port)) {
+        return null
+    }
+    
+    return Pair(ip, port)
+}

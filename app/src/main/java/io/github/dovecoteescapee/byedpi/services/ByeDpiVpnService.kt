@@ -16,6 +16,9 @@ import io.github.dovecoteescapee.byedpi.core.ByeDpiProxyPreferences
 import io.github.dovecoteescapee.byedpi.core.TProxyService
 import io.github.dovecoteescapee.byedpi.data.*
 import io.github.dovecoteescapee.byedpi.utility.*
+import io.github.dovecoteescapee.byedpi.utility.checkIp
+import io.github.dovecoteescapee.byedpi.utility.checkPort
+import io.github.dovecoteescapee.byedpi.utility.checkDomain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -102,9 +105,11 @@ class ByeDpiVpnService : LifecycleVpnService() {
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(PAUSE_NOTIFICATION_ID)
 
-        if (status == ServiceStatus.Connected) {
-            Log.w(TAG, "VPN already connected")
-            return
+        mutex.withLock {
+            if (status == ServiceStatus.Connected) {
+                Log.w(TAG, "VPN already connected")
+                return
+            }
         }
 
         try {
@@ -117,7 +122,9 @@ class ByeDpiVpnService : LifecycleVpnService() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
             updateStatus(ServiceStatus.Failed)
-            stop()
+            lifecycleScope.launch {
+                stop()
+            }
         }
     }
 
@@ -160,21 +167,39 @@ class ByeDpiVpnService : LifecycleVpnService() {
             throw IllegalStateException("Proxy fields not null")
         }
 
+        // Validate proxy settings before starting
+        val sharedPreferences = getPreferences()
+        val (ip, portStr) = sharedPreferences.getProxyIpAndPort()
+        
+        if (!checkIp(ip)) {
+            throw IllegalArgumentException("Invalid proxy IP address: $ip")
+        }
+        
+        val port = portStr.toIntOrNull()
+        if (port == null || !checkPort(port)) {
+            throw IllegalArgumentException("Invalid proxy port: $portStr")
+        }
+
         val preferences = getByeDpiPreferences()
 
         proxyJob = lifecycleScope.launch(Dispatchers.IO) {
-            val code = byeDpiProxy.startProxy(preferences)
-            delay(500)
+            try {
+                val code = byeDpiProxy.startProxy(preferences)
+                delay(500)
 
-            if (code != 0) {
-                Log.e(TAG, "Proxy stopped with code $code")
+                if (code != 0) {
+                    Log.e(TAG, "Proxy stopped with code $code")
+                    updateStatus(ServiceStatus.Failed)
+                } else {
+                    updateStatus(ServiceStatus.Disconnected)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in proxy execution", e)
                 updateStatus(ServiceStatus.Failed)
-            } else {
-                updateStatus(ServiceStatus.Disconnected)
+            } finally {
+                stopTun2Socks()
+                stopSelf()
             }
-
-            stopTun2Socks()
-            stopSelf()
         }
 
         Log.i(TAG, "Proxy started")
@@ -183,28 +208,35 @@ class ByeDpiVpnService : LifecycleVpnService() {
     private suspend fun stopProxy() {
         Log.i(TAG, "Stopping proxy")
 
-        if (status == ServiceStatus.Disconnected) {
-            Log.w(TAG, "Proxy already disconnected")
-            return
+        mutex.withLock {
+            if (status == ServiceStatus.Disconnected) {
+                Log.w(TAG, "Proxy already disconnected")
+                return
+            }
         }
 
         try {
             byeDpiProxy.stopProxy()
             proxyJob?.cancel()
 
-            val completed = withTimeoutOrNull(2000) {
+            val completed = withTimeoutOrNull(5000) {
                 proxyJob?.join()
                 true
             }
 
             if (completed == null) {
-                Log.w(TAG, "proxy not finish in time, cancelling...")
-                byeDpiProxy.jniForceClose()
+                Log.w(TAG, "proxy not finish in time, force closing...")
+                try {
+                    byeDpiProxy.jniForceClose()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to force close proxy", e)
+                }
             }
 
             proxyJob = null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to close proxyJob", e)
+            proxyJob = null
         }
 
         Log.i(TAG, "Proxy stopped")
@@ -218,9 +250,22 @@ class ByeDpiVpnService : LifecycleVpnService() {
         }
 
         val sharedPreferences = getPreferences()
-        val (ip, port) = sharedPreferences.getProxyIpAndPort()
+        val (ip, portStr) = sharedPreferences.getProxyIpAndPort()
+        
+        // Validate IP and port
+        if (!checkIp(ip)) {
+            throw IllegalArgumentException("Invalid proxy IP address: $ip")
+        }
+        
+        val port = portStr.toIntOrNull()
+        if (port == null || !checkPort(port)) {
+            throw IllegalArgumentException("Invalid proxy port: $portStr")
+        }
 
         val dns = sharedPreferences.getStringNotNull("dns_ip", "8.8.8.8")
+        if (dns.isNotBlank() && !checkIp(dns)) {
+            Log.w(TAG, "Invalid DNS address: $dns, using default 8.8.8.8")
+        }
         val ipv6 = sharedPreferences.getBoolean("ipv6_enable", false)
 
         val tun2socksConfig = buildString {
@@ -237,20 +282,53 @@ class ByeDpiVpnService : LifecycleVpnService() {
         }
 
         val configPath = try {
-            File.createTempFile("config", "tmp", cacheDir).apply {
+            File.createTempFile("config", ".tmp", cacheDir).apply {
                 writeText(tun2socksConfig)
+                deleteOnExit()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create config file", e)
-            throw e
+            throw IllegalStateException("Failed to create config file", e)
         }
 
-        val fd = createBuilder(dns, ipv6).establish()
-            ?: throw IllegalStateException("VPN connection failed")
+        val fd = try {
+            createBuilder(dns, ipv6).establish()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to establish VPN connection", e)
+            try {
+                configPath.delete()
+            } catch (e2: Exception) {
+                Log.w(TAG, "Failed to delete config file", e2)
+            }
+            throw IllegalStateException("VPN connection failed", e)
+        } ?: run {
+            try {
+                configPath.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete config file", e)
+            }
+            throw IllegalStateException("VPN connection failed: establish() returned null")
+        }
 
         this.tunFd = fd
 
-        TProxyService.TProxyStartService(configPath.absolutePath, fd.fd)
+        try {
+            TProxyService.TProxyStartService(configPath.absolutePath, fd.fd)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start TProxyService", e)
+            try {
+                fd.close()
+            } catch (e2: Exception) {
+                Log.w(TAG, "Failed to close fd", e2)
+            }
+            tunFd = null
+            try {
+                configPath.delete()
+            } catch (e2: Exception) {
+                Log.w(TAG, "Failed to delete config file", e2)
+            }
+            throw IllegalStateException("Failed to start TProxyService", e)
+        }
 
         Log.i(TAG, "Tun2Socks started. ip: $ip port: $port")
     }
@@ -264,17 +342,27 @@ class ByeDpiVpnService : LifecycleVpnService() {
             Log.e(TAG, "Failed to stop TProxyService", e)
         }
 
+        // Clean up all temporary config files
         try {
-            File(cacheDir, "config.tmp").delete()
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Failed to delete config file", e)
+            cacheDir.listFiles()?.forEach { file ->
+                if (file.name.startsWith("config") && file.name.endsWith(".tmp")) {
+                    try {
+                        file.delete()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to delete config file: ${file.name}", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to cleanup config files", e)
         }
 
         try {
             tunFd?.close()
-            tunFd = null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to close tunFd", e)
+        } finally {
+            tunFd = null
         }
 
         Log.i(TAG, "Tun2socks stopped")
@@ -356,7 +444,22 @@ class ByeDpiVpnService : LifecycleVpnService() {
         }
 
         if (dns.isNotBlank()) {
-            builder.addDnsServer(dns)
+            // Validate DNS before adding
+            if (checkIp(dns) || checkDomain(dns)) {
+                try {
+                    builder.addDnsServer(dns)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to add DNS server: $dns", e)
+                    // Fallback to default DNS
+                    builder.addDnsServer("8.8.8.8")
+                }
+            } else {
+                Log.w(TAG, "Invalid DNS address: $dns, using default 8.8.8.8")
+                builder.addDnsServer("8.8.8.8")
+            }
+        } else {
+            // Default DNS if not specified
+            builder.addDnsServer("8.8.8.8")
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

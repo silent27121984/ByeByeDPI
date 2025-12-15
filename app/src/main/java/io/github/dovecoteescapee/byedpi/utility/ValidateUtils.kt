@@ -43,6 +43,25 @@ fun checkDomain(domain: String): Boolean {
     return true
 }
 
+fun checkPort(port: String): Boolean {
+    val portInt = port.toIntOrNull() ?: return false
+    return portInt in 1..65535
+}
+
+fun checkPort(port: Int): Boolean {
+    return port in 1..65535
+}
+
+fun validateIpAndPort(ip: String, port: String): Pair<Boolean, String?> {
+    if (!checkIp(ip)) {
+        return Pair(false, "Invalid IP address: $ip")
+    }
+    if (!checkPort(port)) {
+        return Pair(false, "Invalid port: $port (must be 1-65535)")
+    }
+    return Pair(true, null)
+}
+
 fun PreferenceFragmentCompat.setEditTestPreferenceListenerDomain(key: String) {
     setEditTextPreferenceListener(key) { value ->
         value.isNotEmpty() && checkDomain(value)

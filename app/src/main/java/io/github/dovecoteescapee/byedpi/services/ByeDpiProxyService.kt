@@ -13,6 +13,8 @@ import io.github.dovecoteescapee.byedpi.core.ByeDpiProxy
 import io.github.dovecoteescapee.byedpi.core.ByeDpiProxyPreferences
 import io.github.dovecoteescapee.byedpi.data.*
 import io.github.dovecoteescapee.byedpi.utility.*
+import io.github.dovecoteescapee.byedpi.utility.checkIp
+import io.github.dovecoteescapee.byedpi.utility.checkPort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -90,9 +92,11 @@ class ByeDpiProxyService : LifecycleService() {
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(PAUSE_NOTIFICATION_ID)
 
-        if (status == ServiceStatus.Connected) {
-            Log.w(TAG, "Proxy already connected")
-            return
+        mutex.withLock {
+            if (status == ServiceStatus.Connected) {
+                Log.w(TAG, "Proxy already connected")
+                return
+            }
         }
 
         try {
@@ -104,7 +108,9 @@ class ByeDpiProxyService : LifecycleService() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start proxy", e)
             updateStatus(ServiceStatus.Failed)
-            stop()
+            lifecycleScope.launch {
+                stop()
+            }
         }
     }
 
@@ -142,21 +148,39 @@ class ByeDpiProxyService : LifecycleService() {
             throw IllegalStateException("Proxy fields not null")
         }
 
-        proxy = ByeDpiProxy()
+        // Validate proxy settings before starting
         val preferences = getByeDpiPreferences()
+        val sharedPreferences = getPreferences()
+        val (ip, portStr) = sharedPreferences.getProxyIpAndPort()
+        
+        if (!checkIp(ip)) {
+            throw IllegalArgumentException("Invalid proxy IP address: $ip")
+        }
+        
+        val port = portStr.toIntOrNull()
+        if (port == null || !checkPort(port)) {
+            throw IllegalArgumentException("Invalid proxy port: $portStr")
+        }
+
+        proxy = ByeDpiProxy()
 
         proxyJob = lifecycleScope.launch(Dispatchers.IO) {
-            val code = proxy.startProxy(preferences)
-            delay(500)
+            try {
+                val code = proxy.startProxy(preferences)
+                delay(500)
 
-            if (code != 0) {
-                Log.e(TAG, "Proxy stopped with code $code")
+                if (code != 0) {
+                    Log.e(TAG, "Proxy stopped with code $code")
+                    updateStatus(ServiceStatus.Failed)
+                } else {
+                    updateStatus(ServiceStatus.Disconnected)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in proxy execution", e)
                 updateStatus(ServiceStatus.Failed)
-            } else {
-                updateStatus(ServiceStatus.Disconnected)
+            } finally {
+                stopSelf()
             }
-
-            stopSelf()
         }
 
         Log.i(TAG, "Proxy started")
@@ -165,28 +189,35 @@ class ByeDpiProxyService : LifecycleService() {
     private suspend fun stopProxy() {
         Log.i(TAG, "Stopping proxy")
 
-        if (status == ServiceStatus.Disconnected) {
-            Log.w(TAG, "Proxy already disconnected")
-            return
+        mutex.withLock {
+            if (status == ServiceStatus.Disconnected) {
+                Log.w(TAG, "Proxy already disconnected")
+                return
+            }
         }
 
         try {
             proxy.stopProxy()
             proxyJob?.cancel()
 
-            val completed = withTimeoutOrNull(2000) {
+            val completed = withTimeoutOrNull(5000) {
                 proxyJob?.join()
                 true
             }
 
             if (completed == null) {
-                Log.w(TAG, "proxy not finish in time, cancelling...")
-                proxy.jniForceClose()
+                Log.w(TAG, "proxy not finish in time, force closing...")
+                try {
+                    proxy.jniForceClose()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to force close proxy", e)
+                }
             }
 
             proxyJob = null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to close proxyJob", e)
+            proxyJob = null
         }
 
         Log.i(TAG, "Proxy stopped")
