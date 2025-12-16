@@ -36,7 +36,8 @@ class BestStrategyActivity : BaseActivity() {
 
     private lateinit var siteChecker: SiteCheckUtils
     private lateinit var cmdHistoryUtils: HistoryUtils
-    private var sites: List<String> = emptyList()
+    private var sites: List<String> = emptyList() // Домены для тестирования (ограничены до 25)
+    private var allDomains: List<String> = emptyList() // Все домены для применения в стратегию
     private lateinit var cmds: List<String>
     private val successfulCmds: MutableList<Triple<String, Int, Int>> = mutableListOf()
 
@@ -129,27 +130,30 @@ class BestStrategyActivity : BaseActivity() {
         
         testJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
-                sites = ServiceDomainsUtils.processMultiLineInput(this@BestStrategyActivity, inputLines).distinct()
+                // ВАЖНО: Сохраняем все домены для применения в стратегию
+                allDomains = ServiceDomainsUtils.processMultiLineInput(this@BestStrategyActivity, inputLines).distinct()
                 
                 withContext(Dispatchers.Main) {
                     progressTextView.visibility = View.GONE
                     
-                    if (sites.isEmpty()) {
+                    if (allDomains.isEmpty()) {
                         Toast.makeText(this@BestStrategyActivity, R.string.best_strategy_empty_input, Toast.LENGTH_SHORT).show()
                         return@withContext
                     }
                     
-                    // Ограничиваем количество доменов для быстрой проверки
-                    val domainsCount = sites.size
+                    // Ограничиваем количество доменов для быстрой проверки (только для тестирования)
+                    val domainsCount = allDomains.size
                     if (domainsCount > 25) {
-                        // Берем только первые 25 доменов (обычно это основные домены)
-                        sites = sites.take(25)
+                        // Берем только первые 25 доменов для тестирования (обычно это основные домены)
+                        sites = allDomains.take(25)
                         Toast.makeText(
                             this@BestStrategyActivity,
-                            "Найдено $domainsCount доменов, будет проверено 25 основных",
+                            "Найдено $domainsCount доменов, будет проверено 25 основных для теста",
                             Toast.LENGTH_SHORT
                         ).show()
                     } else {
+                        // Если доменов меньше 25, используем все для тестирования
+                        sites = allDomains
                         Toast.makeText(
                             this@BestStrategyActivity,
                             "Найдено доменов: $domainsCount",
@@ -357,8 +361,12 @@ class BestStrategyActivity : BaseActivity() {
     private fun applyStrategy() {
         val strategy = savedStrategy ?: return
 
-        // ВАЖНО: Добавляем домены из списка пользователя в стратегию для split tunneling
-        val finalStrategy = if (sites.isNotEmpty()) {
+        // ВАЖНО: Добавляем ВСЕ домены из списка пользователя в стратегию для split tunneling
+        // Используем allDomains, а не sites (который ограничен до 25 для тестирования)
+        val finalStrategy = if (allDomains.isNotEmpty()) {
+            addDomainsToStrategy(strategy, allDomains)
+        } else if (sites.isNotEmpty()) {
+            // Fallback на sites, если allDomains пуст (на случай, если что-то пошло не так)
             addDomainsToStrategy(strategy, sites)
         } else {
             strategy
