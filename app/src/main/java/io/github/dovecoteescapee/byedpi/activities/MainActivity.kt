@@ -22,6 +22,7 @@ import io.github.dovecoteescapee.byedpi.data.*
 import io.github.dovecoteescapee.byedpi.databinding.ActivityMainBinding
 import io.github.dovecoteescapee.byedpi.services.ServiceManager
 import io.github.dovecoteescapee.byedpi.services.appStatus
+import io.github.dovecoteescapee.byedpi.services.setStatus
 import io.github.dovecoteescapee.byedpi.utility.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,7 +87,9 @@ class MainActivity : BaseActivity() {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d(TAG, "Received intent: ${intent?.action}")
+            Log.i(TAG, "=== BROADCAST RECEIVED ===")
+            Log.i(TAG, "Intent action: ${intent?.action}")
+            Log.i(TAG, "Intent: $intent")
 
             if (intent == null) {
                 Log.w(TAG, "Received null intent")
@@ -95,16 +98,24 @@ class MainActivity : BaseActivity() {
 
             val senderOrd = intent.getIntExtra(SENDER, -1)
             val sender = Sender.entries.getOrNull(senderOrd)
+            Log.i(TAG, "Sender ordinal: $senderOrd, sender: $sender")
+            
             if (sender == null) {
                 Log.w(TAG, "Received intent with unknown sender: $senderOrd")
                 return
             }
 
             when (val action = intent.action) {
-                STARTED_BROADCAST,
-                STOPPED_BROADCAST -> updateStatus()
-
+                STARTED_BROADCAST -> {
+                    Log.i(TAG, "Received STARTED_BROADCAST from $sender")
+                    updateStatus()
+                }
+                STOPPED_BROADCAST -> {
+                    Log.i(TAG, "Received STOPPED_BROADCAST from $sender")
+                    updateStatus()
+                }
                 FAILED_BROADCAST -> {
+                    Log.i(TAG, "Received FAILED_BROADCAST from $sender")
                     Toast.makeText(
                         context,
                         getString(R.string.failed_to_start, sender.name),
@@ -115,6 +126,7 @@ class MainActivity : BaseActivity() {
 
                 else -> Log.w(TAG, "Unknown action: $action")
             }
+            Log.i(TAG, "=== BROADCAST HANDLED ===")
         }
     }
 
@@ -138,16 +150,44 @@ class MainActivity : BaseActivity() {
         }
 
         binding.statusButton.setOnClickListener {
+            val (status, mode) = appStatus
+            val preferences = getPreferences()
+            val currentMode = preferences.mode()
+            
+            Log.i(TAG, "=== BUTTON CLICKED ===")
+            Log.i(TAG, "Current status: $status, mode: $mode")
+            Log.i(TAG, "Preferred mode from settings: $currentMode")
+            Log.i(TAG, "Button isClickable: ${binding.statusButton.isClickable}, isEnabled: ${binding.statusButton.isEnabled}")
+            
+            // Временно отключаем кнопку для предотвращения двойных кликов
             binding.statusButton.isClickable = false
-
-            val (status, _) = appStatus
+            binding.statusButton.isEnabled = false
+            Log.i(TAG, "Button disabled for click handling")
+            
+            // Если режим изменился в настройках, обновляем статус
+            if (mode != currentMode && status == AppStatus.Halted) {
+                Log.i(TAG, "Mode mismatch detected, updating status: $mode -> $currentMode")
+                setStatus(AppStatus.Halted, currentMode)
+            }
+            
             when (status) {
-                AppStatus.Halted -> start()
-                AppStatus.Running -> stop()
+                AppStatus.Halted -> {
+                    Log.i(TAG, "Starting service with mode: $currentMode")
+                    start()
+                }
+                AppStatus.Running -> {
+                    Log.i(TAG, "Stopping service")
+                    stop()
+                }
             }
 
+            // Восстанавливаем кнопку через небольшую задержку
             binding.statusButton.postDelayed({
+                Log.i(TAG, "Restoring button state after delay")
                 binding.statusButton.isClickable = true
+                binding.statusButton.isEnabled = true
+                // Обновляем статус для синхронизации
+                updateStatus()
             }, 1000)
         }
 
@@ -221,62 +261,120 @@ class MainActivity : BaseActivity() {
     }
 
     private fun start() {
-        when (getPreferences().mode()) {
+        val mode = getPreferences().mode()
+        Log.i(TAG, "=== START() CALLED ===")
+        Log.i(TAG, "Mode: $mode")
+        Log.i(TAG, "Current appStatus: ${appStatus.first}, ${appStatus.second}")
+        
+        when (mode) {
             Mode.VPN -> {
+                Log.i(TAG, "Starting VPN mode")
                 val intentPrepare = VpnService.prepare(this)
                 if (intentPrepare != null) {
+                    Log.i(TAG, "VPN permission required, launching request")
                     vpnRegister.launch(intentPrepare)
                 } else {
+                    Log.i(TAG, "VPN permission granted, starting service")
                     ServiceManager.start(this, Mode.VPN)
                 }
             }
 
-            Mode.Proxy -> ServiceManager.start(this, Mode.Proxy)
+            Mode.Proxy -> {
+                Log.i(TAG, "Starting Proxy mode")
+                ServiceManager.start(this, Mode.Proxy)
+            }
         }
+        Log.i(TAG, "=== START() COMPLETE ===")
     }
 
     private fun stop() {
+        val (status, mode) = appStatus
+        Log.i(TAG, "=== STOP() CALLED ===")
+        Log.i(TAG, "Current status: $status, mode: $mode")
         ServiceManager.stop(this)
+        Log.i(TAG, "ServiceManager.stop() called")
+        Log.i(TAG, "=== STOP() COMPLETE ===")
     }
 
     private fun updateStatus() {
         val (status, mode) = appStatus
 
-        Log.i(TAG, "Updating status: $status, $mode")
+        Log.i(TAG, "=== UPDATE_STATUS() CALLED ===")
+        Log.i(TAG, "Current appStatus: status=$status, mode=$mode")
 
         val preferences = getPreferences()
+        val preferredMode = preferences.mode()
         val (ip, port) = preferences.getProxyIpAndPort()
+
+        Log.i(TAG, "Preferred mode from settings: $preferredMode")
+        Log.i(TAG, "Proxy address: $ip:$port")
 
         binding.proxyAddress.text = getString(R.string.proxy_address, ip, port)
 
+        // ВАЖНО: Если режим изменился в настройках, обновляем статус
+        // Это нужно, чтобы кнопка показывала правильный текст после переключения режима
+        if (mode != preferredMode && status == AppStatus.Halted) {
+            Log.i(TAG, "Mode mismatch detected: $mode -> $preferredMode, updating status")
+            setStatus(AppStatus.Halted, preferredMode)
+            // Обновляем локальные переменные после изменения статуса
+            val updatedStatus = appStatus
+            val updatedMode = updatedStatus.second
+            Log.i(TAG, "After setStatus: status=${updatedStatus.first}, mode=$updatedMode")
+            updateStatusUI(updatedStatus.first, updatedMode, preferences)
+        } else {
+            Log.i(TAG, "No mode mismatch, updating UI with current status")
+            updateStatusUI(status, mode, preferences)
+        }
+        Log.i(TAG, "=== UPDATE_STATUS() COMPLETE ===")
+    }
+    
+    private fun updateStatusUI(status: AppStatus, mode: Mode, preferences: android.content.SharedPreferences) {
+        Log.i(TAG, "=== UPDATE_STATUS_UI() CALLED ===")
+        Log.i(TAG, "Status: $status, mode: $mode")
+        Log.i(TAG, "Button state before: isClickable=${binding.statusButton.isClickable}, isEnabled=${binding.statusButton.isEnabled}")
+        
+        // Убеждаемся, что кнопка всегда кликабельна
+        binding.statusButton.isClickable = true
+        binding.statusButton.isEnabled = true
+        
+        Log.i(TAG, "Button state after: isClickable=${binding.statusButton.isClickable}, isEnabled=${binding.statusButton.isEnabled}")
+
         when (status) {
             AppStatus.Halted -> {
-                when (preferences.mode()) {
+                val displayMode = preferences.mode()
+                Log.i(TAG, "Status is Halted, display mode: $displayMode")
+                when (displayMode) {
                     Mode.VPN -> {
                         binding.statusText.setText(R.string.vpn_disconnected)
                         binding.statusButton.setText(R.string.vpn_connect)
+                        Log.i(TAG, "Set button text to: VPN Connect")
                     }
 
                     Mode.Proxy -> {
                         binding.statusText.setText(R.string.proxy_down)
                         binding.statusButton.setText(R.string.proxy_start)
+                        Log.i(TAG, "Set button text to: Proxy Start")
                     }
                 }
             }
 
             AppStatus.Running -> {
+                Log.i(TAG, "Status is Running, mode: $mode")
                 when (mode) {
                     Mode.VPN -> {
                         binding.statusText.setText(R.string.vpn_connected)
                         binding.statusButton.setText(R.string.vpn_disconnect)
+                        Log.i(TAG, "Set button text to: VPN Disconnect")
                     }
 
                     Mode.Proxy -> {
                         binding.statusText.setText(R.string.proxy_up)
                         binding.statusButton.setText(R.string.proxy_stop)
+                        Log.i(TAG, "Set button text to: Proxy Stop")
                     }
                 }
             }
         }
+        Log.i(TAG, "=== UPDATE_STATUS_UI() COMPLETE ===")
     }
 }

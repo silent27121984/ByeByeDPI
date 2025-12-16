@@ -97,6 +97,11 @@
             android:title="@string/title_test"
             android:summary="@string/summary_test"/>
 
+        <Preference
+            android:key="best_strategy"
+            android:title="@string/best_strategy_title"
+            android:summary="@string/best_strategy_summary"/>
+
     </androidx.preference.PreferenceCategory>
 
     <androidx.preference.PreferenceCategory

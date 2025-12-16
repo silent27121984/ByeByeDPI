@@ -67,6 +67,12 @@
             android:exported="false"/>
 
         <activity
+            android:name=".activities.BestStrategyActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:label="@string/best_strategy_title"
+            android:exported="false"/>
+
+        <activity
             android:name=".activities.TestSettingsActivity"
             android:label="@string/title_settings"
             android:exported="false"/>

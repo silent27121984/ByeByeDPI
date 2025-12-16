@@ -96,6 +96,13 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
                 true
             }
 
+        findPreferenceNotNull<Preference>("best_strategy")
+            .setOnPreferenceClickListener {
+                val intent = Intent(context, io.github.dovecoteescapee.byedpi.activities.BestStrategyActivity::class.java)
+                startActivity(intent)
+                true
+            }
+
         findPreferenceNotNull<Preference>("storage_access")
             .setOnPreferenceClickListener {
                 requestStoragePermission()
@@ -174,6 +181,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
         val uiSettings = findPreferenceNotNull<Preference>("byedpi_ui_settings")
         val cmdSettings = findPreferenceNotNull<Preference>("byedpi_cmd_settings")
         val proxyTest = findPreferenceNotNull<Preference>("proxy_test")
+        val bestStrategy = findPreferenceNotNull<Preference>("best_strategy")
 
         if (cmdEnable) {
             val (cmdIp, cmdPort) = sharedPreferences?.checkIpAndPortInCmd() ?: Pair(null, null)
@@ -185,6 +193,7 @@ class MainSettingsFragment : PreferenceFragmentCompat() {
         uiSettings.isEnabled = !cmdEnable
         cmdSettings.isEnabled = cmdEnable
         proxyTest.isEnabled = cmdEnable
+        bestStrategy.isEnabled = cmdEnable
 
         when (mode) {
             Mode.VPN -> {

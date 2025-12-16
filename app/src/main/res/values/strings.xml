@@ -141,4 +141,19 @@
     <string name="test_delay">Ожидание между проверками</string>
     <string name="test_requests">Количество запросов к домену</string>
     <string name="test_timeout">Таймаут ответа домена</string>
+    <string name="best_strategy_title">Выбор лучшей стратегии</string>
+    <string name="best_strategy_summary">Подобрать оптимальную стратегию для ваших сайтов и программ</string>
+    <string name="best_strategy_input_hint">Введите название сервиса (youtube, roblox и т.д.) или домены (по одному на строку)</string>
+    <string name="best_strategy_input_label">Сервисы и домены для обхода блокировок</string>
+    <string name="best_strategy_services_hint">Доступные сервисы: youtube, roblox, discord, telegram, instagram, facebook, twitter, tiktok, netflix, spotify, twitch, reddit, github, steam</string>
+    <string name="best_strategy_find">Подобрать лучшую стратегию</string>
+    <string name="best_strategy_testing">Тестирование стратегий...</string>
+    <string name="best_strategy_loading_domains">Поиск доменов...</string>
+    <string name="best_strategy_result_title">Лучшая стратегия</string>
+    <string name="best_strategy_result_info">Нажмите на стратегию, чтобы скопировать в командную строку</string>
+    <string name="best_strategy_copy">Стратегия скопирована в буфер обмена</string>
+    <string name="best_strategy_apply">Применить стратегию</string>
+    <string name="best_strategy_applied">Стратегия применена</string>
+    <string name="best_strategy_empty_input">Пожалуйста, введите хотя бы один сайт или программу</string>
+    <string name="best_strategy_no_result">Не удалось проверить стратегии. Убедитесь, что прокси настроен правильно.</string>
 </resources>

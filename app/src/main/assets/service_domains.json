@@ -1,0 +1,131 @@
+{
+  "youtube": [
+    "googlevideo.com",
+    "youtu.be",
+    "youtube.com",
+    "youtubei.googleapis.com",
+    "youtubeembeddedplayer.googleapis.com",
+    "ytimg.l.google.com",
+    "ytimg.com",
+    "jnn-pa.googleapis.com",
+    "youtube-nocookie.com",
+    "youtube-ui.l.google.com",
+    "yt-video-upload.l.google.com",
+    "wide-youtube.l.google.com",
+    "youtubekids.com",
+    "ggpht.com"
+  ],
+  "roblox": [
+    "css.rbxcdn.com",
+    "static.rbxcdn.com",
+    "js.rbxcdn.com",
+    "roblox.com",
+    "robloxdev.com",
+    "rbxinfra.com",
+    "images.rbxcdn.com",
+    "metrics.roblox.com",
+    "apis.roblox.com",
+    "ecsv2.roblox.com",
+    "locale.roblox.com",
+    "economy.roblox.com",
+    "friends.roblox.com",
+    "privatemessages.roblox.com",
+    "trades.roblox.com",
+    "notifications.roblox.com",
+    "presence.roblox.com",
+    "thumbnails.rbxcdn.com",
+    "tr.rbxcdn.com",
+    "games.roblox.com",
+    "followings.roblox.com",
+    "voice.roblox.com",
+    "badges.roblox.com",
+    "lms.roblox.com"
+  ],
+  "discord": [
+    "discord.com",
+    "discordapp.com",
+    "discord.gg",
+    "discord.media",
+    "discordcdn.com",
+    "discordstatus.com"
+  ],
+  "telegram": [
+    "telegram.org",
+    "telegram.me",
+    "t.me",
+    "core.telegram.org",
+    "pluto.web.telegram.org",
+    "venus.web.telegram.org",
+    "aurora.web.telegram.org",
+    "vesta.web.telegram.org",
+    "flora.web.telegram.org"
+  ],
+  "instagram": [
+    "instagram.com",
+    "cdninstagram.com",
+    "fbcdn.net",
+    "facebook.com"
+  ],
+  "facebook": [
+    "facebook.com",
+    "fbcdn.net",
+    "facebook.net",
+    "fb.com",
+    "m.facebook.com"
+  ],
+  "twitter": [
+    "twitter.com",
+    "x.com",
+    "twimg.com",
+    "t.co",
+    "abs.twimg.com",
+    "pbs.twimg.com"
+  ],
+  "tiktok": [
+    "tiktok.com",
+    "tiktokcdn.com",
+    "tiktokv.com",
+    "tiktokcdn-us.com",
+    "muscdn.com",
+    "musical.ly"
+  ],
+  "netflix": [
+    "netflix.com",
+    "nflxext.com",
+    "nflximg.com",
+    "nflxso.net",
+    "nflxvideo.net"
+  ],
+  "spotify": [
+    "spotify.com",
+    "spotifycdn.com",
+    "scdn.co",
+    "spotifycharts.com",
+    "spotifynewsroom.com"
+  ],
+  "twitch": [
+    "twitch.tv",
+    "ttvnw.net",
+    "twitchcdn.net",
+    "jtvnw.net"
+  ],
+  "reddit": [
+    "reddit.com",
+    "redd.it",
+    "redditstatic.com",
+    "redditmedia.com"
+  ],
+  "github": [
+    "github.com",
+    "github.io",
+    "githubusercontent.com",
+    "githubassets.com"
+  ],
+  "steam": [
+    "steamcommunity.com",
+    "steampowered.com",
+    "steamstatic.com",
+    "steam-chat.com"
+  ]
+}
+
