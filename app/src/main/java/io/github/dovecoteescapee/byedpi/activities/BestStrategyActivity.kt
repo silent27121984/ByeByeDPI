@@ -8,6 +8,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -33,6 +34,8 @@ class BestStrategyActivity : BaseActivity() {
     private lateinit var resultInfo: TextView
     private lateinit var resultStrategy: TextView
     private lateinit var applyStrategyButton: Button
+    private lateinit var mergeStrategyButton: Button
+    private lateinit var buttonsLayout: LinearLayout
 
     private lateinit var siteChecker: SiteCheckUtils
     private lateinit var cmdHistoryUtils: HistoryUtils
@@ -67,6 +70,8 @@ class BestStrategyActivity : BaseActivity() {
         resultInfo = findViewById(R.id.resultInfo)
         resultStrategy = findViewById(R.id.resultStrategy)
         applyStrategyButton = findViewById(R.id.applyStrategyButton)
+        mergeStrategyButton = findViewById(R.id.mergeStrategyButton)
+        buttonsLayout = findViewById(R.id.buttonsLayout)
 
         findStrategyButton.setOnClickListener {
             startTesting()
@@ -78,6 +83,10 @@ class BestStrategyActivity : BaseActivity() {
 
         applyStrategyButton.setOnClickListener {
             applyStrategy()
+        }
+
+        mergeStrategyButton.setOnClickListener {
+            mergeStrategy()
         }
     }
 
@@ -192,7 +201,7 @@ class BestStrategyActivity : BaseActivity() {
         progressTextView.visibility = View.VISIBLE
         progressTextView.text = getString(R.string.best_strategy_testing)
         resultScrollView.visibility = View.GONE
-        applyStrategyButton.visibility = View.GONE
+        buttonsLayout.visibility = View.GONE
 
         testJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -377,7 +386,7 @@ class BestStrategyActivity : BaseActivity() {
 
         resultStrategy.text = resultText
         resultScrollView.visibility = View.VISIBLE
-        applyStrategyButton.visibility = View.VISIBLE
+        buttonsLayout.visibility = View.VISIBLE
 
         // Сохраняем стратегию для возможности применения
         savedStrategy = strategy
@@ -449,6 +458,188 @@ class BestStrategyActivity : BaseActivity() {
                 ).show()
             }
         }
+    }
+
+    /**
+     * Объединяет найденную стратегию с текущей стратегией
+     * Правильно объединяет флаги десинхронизации, домены, протоколы и другие параметры
+     */
+    private fun mergeStrategy() {
+        val newStrategy = savedStrategy ?: return
+        val currentStrategy = prefs.getString("byedpi_cmd_args", null) ?: ""
+
+        if (currentStrategy.isBlank()) {
+            // Если текущей стратегии нет, просто применяем новую
+            applyStrategy()
+            return
+        }
+
+        android.util.Log.i("BestStrategy", "Merging strategies")
+        android.util.Log.d("BestStrategy", "Current strategy: $currentStrategy")
+        android.util.Log.d("BestStrategy", "New strategy: $newStrategy")
+
+        // Добавляем домены к новой стратегии, если они есть
+        val newStrategyWithDomains = if (allDomains.isNotEmpty()) {
+            addDomainsToStrategy(newStrategy, allDomains)
+        } else if (sites.isNotEmpty()) {
+            addDomainsToStrategy(newStrategy, sites)
+        } else {
+            newStrategy
+        }
+
+        // Объединяем стратегии
+        val mergedStrategy = mergeStrategies(currentStrategy, newStrategyWithDomains)
+
+        android.util.Log.i("BestStrategy", "Merged strategy: $mergedStrategy")
+
+        // Сохраняем текущую стратегию в историю
+        if (currentStrategy != mergedStrategy) {
+            cmdHistoryUtils.addCommand(currentStrategy)
+        }
+
+        // Сохраняем объединенную стратегию
+        prefs.edit().putString("byedpi_cmd_args", mergedStrategy).apply()
+        cmdHistoryUtils.addCommand(mergedStrategy)
+
+        // Включаем режим командной строки, если он еще не включен
+        if (!prefs.getBoolean("byedpi_enable_cmd_settings", false)) {
+            prefs.edit().putBoolean("byedpi_enable_cmd_settings", true).apply()
+        }
+
+        // Останавливаем сервис, если он был запущен для тестирования
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (isProxyRunning()) {
+                ServiceManager.stop(this@BestStrategyActivity)
+                var attempts = 0
+                while (attempts < 20 && isProxyRunning()) {
+                    delay(200)
+                    attempts++
+                }
+                if (isProxyRunning()) {
+                    val preferredMode = prefs.mode()
+                    setStatus(AppStatus.Halted, preferredMode)
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@BestStrategyActivity,
+                    getString(R.string.best_strategy_merged),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    /**
+     * Объединяет две стратегии в одну, правильно обрабатывая все флаги
+     */
+    private fun mergeStrategies(strategy1: String, strategy2: String): String {
+        val args1 = shellSplit(strategy1).toMutableList()
+        val args2 = shellSplit(strategy2).toMutableList()
+        
+        android.util.Log.d("BestStrategy", "Merging args1: ${args1.joinToString(", ")}")
+        android.util.Log.d("BestStrategy", "Merging args2: ${args2.joinToString(", ")}")
+
+        // Собираем ВСЕ флаги из обеих стратегий, группируя по типам
+        val desyncFlags = mutableListOf<String>() // -s, -d, -o, -q, -f
+        val otherFlags = mutableMapOf<String, String>() // Остальные флаги (ключ = базовый флаг, значение = полный аргумент)
+        val allDomains = mutableSetOf<String>()
+        val allProtocols = mutableSetOf<Char>()
+
+        // Обрабатываем первую стратегию
+        args1.forEach { arg ->
+            when {
+                arg.startsWith("-s") || arg.startsWith("-d") || arg.startsWith("-o") ||
+                arg.startsWith("-q") || arg.startsWith("-f") -> {
+                    // Флаги десинхронизации - добавляем все
+                    desyncFlags.add(arg)
+                }
+                arg.startsWith("-H:") -> {
+                    // Домены - извлекаем и добавляем в множество
+                    val domains = arg.substring(3).split(":").filter { it.isNotBlank() }
+                    allDomains.addAll(domains)
+                }
+                arg.startsWith("-K") -> {
+                    // Протоколы - извлекаем и добавляем в множество
+                    val protocols = arg.substring(2).split(",").filter { it.isNotBlank() }
+                    protocols.forEach { protocol ->
+                        protocol.forEach { char -> if (char in "thui") allProtocols.add(char) }
+                    }
+                }
+                else -> {
+                    // Остальные флаги - сохраняем в мапу
+                    val flagBase = arg.substringBefore("=").substringBefore(":")
+                    if (!otherFlags.containsKey(flagBase)) {
+                        otherFlags[flagBase] = arg
+                    }
+                }
+            }
+        }
+
+        // Обрабатываем вторую стратегию
+        args2.forEach { arg ->
+            when {
+                arg.startsWith("-s") || arg.startsWith("-d") || arg.startsWith("-o") ||
+                arg.startsWith("-q") || arg.startsWith("-f") -> {
+                    // Флаги десинхронизации - добавляем все (могут быть дубликаты, это нормально)
+                    desyncFlags.add(arg)
+                }
+                arg.startsWith("-H:") -> {
+                    // Домены - извлекаем и добавляем в множество
+                    val domains = arg.substring(3).split(":").filter { it.isNotBlank() }
+                    allDomains.addAll(domains)
+                }
+                arg.startsWith("-K") -> {
+                    // Протоколы - извлекаем и добавляем в множество
+                    val protocols = arg.substring(2).split(",").filter { it.isNotBlank() }
+                    protocols.forEach { protocol ->
+                        protocol.forEach { char -> if (char in "thui") allProtocols.add(char) }
+                    }
+                }
+                else -> {
+                    // Остальные флаги - добавляем только если такого флага еще нет
+                    val flagBase = arg.substringBefore("=").substringBefore(":")
+                    if (!otherFlags.containsKey(flagBase)) {
+                        otherFlags[flagBase] = arg
+                    } else {
+                        // Если флаг уже есть, берем из второй стратегии (более новая)
+                        otherFlags[flagBase] = arg
+                    }
+                }
+            }
+        }
+
+        // Собираем итоговую стратегию
+        val merged = mutableListOf<String>()
+        
+        // 1. Добавляем флаги десинхронизации
+        merged.addAll(desyncFlags)
+        
+        // 2. Добавляем остальные флаги (кроме -K и -H, которые добавим в конце)
+        otherFlags.values.forEach { flag ->
+            if (!flag.startsWith("-K") && !flag.startsWith("-H")) {
+                merged.add(flag)
+            }
+        }
+        
+        // 3. Добавляем объединенные протоколы (-K) перед -H для правильного порядка
+        if (allProtocols.isNotEmpty()) {
+            val protocolsStr = allProtocols.sorted().joinToString(",")
+            merged.add("-K$protocolsStr")
+        }
+        
+        // 4. Добавляем объединенные домены (-H) в конце
+        if (allDomains.isNotEmpty()) {
+            val domainsStr = allDomains.sorted().joinToString(":")
+            merged.add("-H:$domainsStr")
+        }
+
+        val result = merged.joinToString(" ")
+        android.util.Log.d("BestStrategy", "Merged result: $result")
+        android.util.Log.d("BestStrategy", "Desync flags: ${desyncFlags.size}, Other flags: ${otherFlags.size}, Domains: ${allDomains.size}, Protocols: ${allProtocols.size}")
+        
+        return result
     }
 
     private fun copyStrategyToClipboard() {

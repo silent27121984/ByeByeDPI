@@ -110,11 +110,23 @@ object ServiceDomainsUtils {
         when (serviceName) {
             "youtube" -> {
                 domains.addAll(listOf(
+                    "1e100.net",
+                    "ggpht.com",
                     "googlevideo.com",
+                    "googleapis.com",
+                    "googleusercontent.com",
+                    "i.ytimg.com",
+                    "i9.ytimg.com",
+                    "l.google.com",
+                    "nhacmp3youtube.com",
+                    "play.google.com",
+                    "wide-youtube.l.google.com",
                     "youtu.be",
+                    "youtube.com",
                     "youtubei.googleapis.com",
-                    "ytimg.com",
-                    "ggpht.com"
+                    "yt3.ggpht.com",
+                    "yt3.googleusercontent.com",
+                    "ytimg.com"
                 ))
             }
             "roblox" -> {
@@ -126,25 +138,148 @@ object ServiceDomainsUtils {
             }
             "discord" -> {
                 domains.addAll(listOf(
+                    "airhorn.solutions",
+                    "airhornbot.com",
+                    "bigbeans.solutions",
+                    "canary.discord.com",
+                    "cdn.discordapp.com",
+                    "click.discord.com",
                     "dis.gd",
-                    "discord.co",
+                    "discord-activities.com",
                     "discord.app",
+                    "discord.co",
+                    "discord.com",
+                    "discord.design",
                     "discord.dev",
-                    "discord.new",
+                    "discord.gg",
                     "discord.gift",
                     "discord.gifts",
+                    "discord.media",
+                    "discord.new",
                     "discord.store",
-                    "discord.design",
-                    "click.discord.com",
+                    "discord.tools",
+                    "discordactivities.com",
                     "discordapp.com",
+                    "discordapp.io",
+                    "discordapp.net",
+                    "discord-attachments-uploads-prd.storage.googleapis.com",
                     "discordcdn.com",
-                    "discordsez.com",
-                    "discordsays.com",
                     "discordmerch.com",
                     "discordpartygames.com",
-                    "discordactivities.com",
+                    "discordsays.com",
+                    "discordsez.com",
+                    "discordstatus.com",
+                    "hammerandchisel.ssl.zendesk.com",
+                    "images-ext-1.discordapp.net",
+                    "media.discordapp.net",
+                    "ptb.discord.com",
+                    "ptb.discordapp.com",
                     "stable.dl2.discordapp.net",
-                    "discord-attachments-uploads-prd.storage.googleapis.com"
+                    "storage.googleapis.com",
+                    "watchanimeattheoffice.com"
+                ))
+            }
+            "google" -> {
+                domains.addAll(listOf(
+                    "google.com",
+                    "googleads.g.doubleclick.net",
+                    "googleapis.com",
+                    "gmailpostmastertools.googleapis.com",
+                    "gstatic.com",
+                    "manifests.googlevideo.com",
+                    "mtalk.google.com",
+                    "NS1.google.com",
+                    "NS2.google.com",
+                    "NS3.google.com",
+                    "NS4.google.com",
+                    "play.google.com",
+                    "youtube.googleapis.com"
+                ))
+            }
+            "cloudflare" -> {
+                domains.addAll(listOf(
+                    "argotunnel.com",
+                    "cf-china.info",
+                    "cf-ipfs.com",
+                    "cf-ns.com",
+                    "cf-ns.net",
+                    "cf-ns.site",
+                    "cf-ns.tech",
+                    "cfargotunnel.com",
+                    "cfl.re",
+                    "cftest5.cn",
+                    "cftest6.cn",
+                    "cftest7.com",
+                    "cftest8.com",
+                    "cloudflare-cn.com",
+                    "cloudflare-dns.com",
+                    "cloudflare-ech.com",
+                    "cloudflare-esni.com",
+                    "cloudflare-gateway.com",
+                    "cloudflare-ipfs.com",
+                    "cloudflare-quic.com",
+                    "cloudflare.com",
+                    "cloudflare.net",
+                    "cloudflare.tv",
+                    "cloudflareaccess.com",
+                    "cloudflareanycast.net",
+                    "cloudflareapps.com",
+                    "cloudflarebolt.com",
+                    "cloudflarechina.cn",
+                    "cloudflareclient.com",
+                    "cloudflarecn.net",
+                    "cloudflareglobal.net",
+                    "cloudflareinsights-cn.com",
+                    "cloudflareinsights.com",
+                    "cloudflareok.com",
+                    "cloudflarepartners.com",
+                    "cloudflareperf.com",
+                    "cloudflareportal.com",
+                    "cloudflarepreview.com",
+                    "cloudflareprod.com",
+                    "cloudflareregistrar.com",
+                    "cloudflareresolve.com",
+                    "cloudflaressl.com",
+                    "cloudflarestaging.com",
+                    "cloudflarestatus.com",
+                    "cloudflarestorage.com",
+                    "cloudflarestoragegw.com",
+                    "cloudflarestream.com",
+                    "cloudflaretest.com",
+                    "cloudflarewarp.com",
+                    "every1dns.net",
+                    "isbgpsafeyet.com",
+                    "one.one.one",
+                    "one.one.one.one",
+                    "pacloudflare.com",
+                    "pages.dev",
+                    "trycloudflare.com",
+                    "videodelivery.net",
+                    "warp.plus",
+                    "workers.dev"
+                ))
+            }
+            "instagram" -> {
+                domains.addAll(listOf(
+                    "cdninstagram.com",
+                    "igcdn-photos-e-a.akamaihd.net",
+                    "instagram.com",
+                    "instagramstatic.com",
+                    "scontent-hel3-1.cdninstagram.com",
+                    "scontent-lhr6-1.cdninstagram.com",
+                    "scontent-lhr6-2.cdninstagram.com",
+                    "static.cdninstagram.com"
+                ))
+            }
+            "soundcloud" -> {
+                domains.addAll(listOf(
+                    "a-v2.sndcdn.com",
+                    "ams-pageview-public.s3.amazonaws.com",
+                    "artists.soundcloud.com",
+                    "cdn.cookielaw.org",
+                    "sndcdn.com",
+                    "soundcloud.app.goo.gl",
+                    "soundcloud.com"
                 ))
             }
         }

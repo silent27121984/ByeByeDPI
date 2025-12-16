@@ -154,6 +154,8 @@
     <string name="best_strategy_copy">Стратегия скопирована в буфер обмена</string>
     <string name="best_strategy_apply">Применить стратегию</string>
     <string name="best_strategy_applied">Стратегия применена</string>
+    <string name="best_strategy_merge">Добавить в стратегию</string>
+    <string name="best_strategy_merged">Стратегия добавлена в текущую</string>
     <string name="best_strategy_empty_input">Пожалуйста, введите хотя бы один сайт или программу</string>
     <string name="best_strategy_no_result">Не удалось проверить стратегии. Убедитесь, что прокси настроен правильно.</string>
 </resources>

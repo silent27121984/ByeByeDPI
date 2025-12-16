@@ -90,17 +90,35 @@
                 android:clickable="true"
                 android:focusable="true"/>
 
-            <Button
-                android:id="@+id/applyStrategyButton"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
+                android:orientation="vertical"
+                android:gravity="center"
                 android:layout_marginTop="16dp"
-                android:text="@string/best_strategy_apply"
-                android:textAllCaps="true"
-                android:paddingLeft="20dp"
-                android:paddingRight="20dp"
-                android:visibility="gone"/>
+                android:visibility="gone"
+                android:id="@+id/buttonsLayout">
+
+                <Button
+                    android:id="@+id/applyStrategyButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="@string/best_strategy_apply"
+                    android:textAllCaps="true"
+                    android:paddingLeft="20dp"
+                    android:paddingRight="20dp"/>
+
+                <Button
+                    android:id="@+id/mergeStrategyButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/best_strategy_merge"
+                    android:textAllCaps="true"
+                    android:paddingLeft="20dp"
+                    android:paddingRight="20dp"/>
+
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>
