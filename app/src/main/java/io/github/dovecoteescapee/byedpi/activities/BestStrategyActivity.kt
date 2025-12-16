@@ -291,15 +291,34 @@ class BestStrategyActivity : BaseActivity() {
             successfulCmds.add(cmdResult)
             
             // Обновляем лучшую стратегию (лучшая по количеству успешных запросов)
-            if (bestStrategy == null || successfulCount > bestStrategy.second) {
+            val isNewBest = bestStrategy == null || successfulCount > bestStrategy.second
+            if (isNewBest) {
                 bestStrategy = cmdResult
+                android.util.Log.d("BestStrategy", "New best strategy found: ${successPercentage}% success ($successfulCount/$totalRequests)")
             }
             
-            // Ранняя остановка при отличном результате (80%+)
-            if (successPercentage >= 80 && successfulCount >= totalRequests * 0.8) {
-                // Если нашли хорошую стратегию, останавливаемся после проверки минимум 3 стратегий
-                if (index >= 2) {
-                    break
+            // Улучшенная логика ранней остановки:
+            // Если найдена стратегия с 95%+ успешностью, проверяем еще 5 стратегий после нее
+            // чтобы убедиться, что нет еще лучшей. Это позволяет не пропустить лучшую стратегию.
+            if (successPercentage >= 95 && successfulCount >= totalRequests * 0.95) {
+                // Найдена отличная стратегия (95%+)
+                if (index >= 4) {
+                    // Проверено минимум 5 стратегий
+                    // Проверяем еще 5 стратегий после нахождения отличной, чтобы не пропустить лучшую
+                    val strategiesToCheckAfter = 5
+                    val remainingStrategies = strategiesToTest.size - index - 1
+                    
+                    if (remainingStrategies <= strategiesToCheckAfter) {
+                        // Осталось проверить не больше 5 стратегий - проверяем все оставшиеся
+                        android.util.Log.d("BestStrategy", "Found excellent strategy (${successPercentage}%), checking remaining $remainingStrategies strategies...")
+                        continue
+                    } else {
+                        // Уже проверили 5 стратегий после нахождения отличной - останавливаемся
+                        android.util.Log.i("BestStrategy", "Early stop: Found excellent strategy (${successPercentage}% success) and checked $strategiesToCheckAfter more. Best strategy confirmed.")
+                        break
+                    }
+                } else {
+                    android.util.Log.d("BestStrategy", "Found excellent strategy (${successPercentage}%), but need to test at least 5 strategies (tested: ${index + 1})")
                 }
             }
 
@@ -329,7 +348,13 @@ class BestStrategyActivity : BaseActivity() {
         }
 
         // Находим стратегию с наилучшим результатом (всегда возвращаем лучшую, даже если < 50%)
-        return bestStrategy ?: successfulCmds.maxByOrNull { it.second }
+        val finalBest = bestStrategy ?: successfulCmds.maxByOrNull { it.second }
+        if (finalBest != null) {
+            val (strategy, successCount, totalRequests) = finalBest
+            val finalPercentage = (successCount * 100) / totalRequests
+            android.util.Log.i("BestStrategy", "Testing complete. Best strategy: ${finalPercentage}% success ($successCount/$totalRequests) after testing ${successfulCmds.size} strategies")
+        }
+        return finalBest
     }
 
     private fun displayResult(strategyResult: Triple<String, Int, Int>?) {
@@ -379,7 +404,16 @@ class BestStrategyActivity : BaseActivity() {
         }
 
         // Сохраняем новую стратегию с доменами в настройки командной строки
+        android.util.Log.i("BestStrategy", "Saving strategy to preferences")
+        android.util.Log.d("BestStrategy", "Strategy being saved: $finalStrategy")
         prefs.edit().putString("byedpi_cmd_args", finalStrategy).apply()
+        
+        // Проверяем, что стратегия действительно сохранилась
+        val savedStrategy = prefs.getString("byedpi_cmd_args", null)
+        android.util.Log.d("BestStrategy", "Strategy saved successfully: ${savedStrategy != null}")
+        if (savedStrategy != null) {
+            android.util.Log.d("BestStrategy", "Saved strategy matches: ${savedStrategy == finalStrategy}")
+        }
 
         // Добавляем новую стратегию с доменами в историю (она будет в начале списка)
         cmdHistoryUtils.addCommand(finalStrategy)
@@ -437,7 +471,7 @@ class BestStrategyActivity : BaseActivity() {
 
     /**
      * Добавляет домены в стратегию для split tunneling
-     * Формат: -H:домен1 домен2 домен3 (домены разделены пробелами, как в документации)
+     * Формат: -H:домен1:домен2:домен3 (домены разделены двоеточием, как в ByeDpiProxyPreferences)
      */
     private fun addDomainsToStrategy(strategy: String, domains: List<String>): String {
         if (domains.isEmpty()) {
@@ -445,10 +479,14 @@ class BestStrategyActivity : BaseActivity() {
         }
 
         // Убираем дубликаты и ограничиваем количество доменов
-        val uniqueDomains = domains.distinct().take(50) // Ограничиваем до 50 доменов
+        val uniqueDomains = domains.distinct().take(100) // Увеличено до 100 доменов для поддержки всех сервисов
         
-        // Формируем строку доменов через пробел (как указано в документации)
-        val domainsStr = uniqueDomains.joinToString(" ")
+        android.util.Log.i("BestStrategy", "Adding ${uniqueDomains.size} domains to strategy")
+        android.util.Log.d("BestStrategy", "All domains: ${uniqueDomains.joinToString(", ")}")
+        
+        // Формируем строку доменов через двоеточие (как в ByeDpiProxyPreferences.kt)
+        // Формат должен быть: домен1:домен2:домен3 (без пробелов)
+        val domainsStr = uniqueDomains.joinToString(":")
         
         // Разбиваем стратегию на аргументы
         val args = shellSplit(strategy).toMutableList()
@@ -456,23 +494,56 @@ class BestStrategyActivity : BaseActivity() {
         // Удаляем старый -H, если есть
         args.removeAll { it.startsWith("-H") }
         
-        // Добавляем новый -H с доменами (формат: -H:домен1 домен2 домен3)
+        // Добавляем новый -H с доменами (формат: -H:домен1:домен2:домен3)
         args.add("-H:$domainsStr")
         
-        // Добавляем -Kt для протокола TLS, если его еще нет
+        android.util.Log.d("BestStrategy", "Added -H flag with ${uniqueDomains.size} domains")
+        android.util.Log.d("BestStrategy", "Full -H argument: -H:$domainsStr")
+        
+        // Добавляем протоколы для split tunneling
+        // Discord требует TLS (HTTPS) и UDP (для голосовых звонков и WebSocket)
+        // Для whitelist режима порядок важен: сначала -K, потом -H
         val hasProto = args.any { it.startsWith("-K") }
         if (!hasProto) {
-            // Ищем позицию для вставки -Kt (после -H)
+            // Для whitelist режима: сначала -K, потом -H
+            // Но мы уже добавили -H, поэтому добавляем -K ПЕРЕД -H
             val hIndex = args.indexOfFirst { it.startsWith("-H") }
             if (hIndex >= 0) {
-                args.add(hIndex + 1, "-Kt")
+                // Добавляем -Kt,u перед -H для правильного порядка (whitelist режим)
+                // -Kt,u = TLS (HTTPS) + UDP (для Discord голосовых звонков)
+                args.add(hIndex, "-Kt,u")
             } else {
-                args.add("-Kt")
+                args.add("-Kt,u")
+            }
+            android.util.Log.d("BestStrategy", "Added -Kt,u flag for TLS and UDP protocols (required for Discord)")
+        } else {
+            // Если уже есть -K, проверяем, есть ли UDP поддержка
+            val kArg = args.find { it.startsWith("-K") }
+            if (kArg != null && !kArg.contains("u")) {
+                // Добавляем UDP поддержку к существующему -K
+                val newKArg = kArg + ",u"
+                val kIndex = args.indexOf(kArg)
+                args[kIndex] = newKArg
+                android.util.Log.d("BestStrategy", "Added UDP support to existing -K flag for Discord")
             }
         }
         
         // Объединяем обратно в строку
-        return args.joinToString(" ")
+        val finalStrategy = args.joinToString(" ")
+        android.util.Log.i("BestStrategy", "Final strategy length: ${finalStrategy.length} chars")
+        
+        // Логируем полный список доменов для отладки
+        val hArg = args.find { it.startsWith("-H:") }
+        if (hArg != null) {
+            val domainsInArg = hArg.substring(3).split(":")
+            android.util.Log.i("BestStrategy", "Total domains in -H flag: ${domainsInArg.size}")
+            android.util.Log.d("BestStrategy", "All domains in strategy: ${domainsInArg.joinToString(", ")}")
+        }
+        
+        // Логируем полную стратегию (может быть длинной, но это важно для отладки)
+        android.util.Log.d("BestStrategy", "Full strategy: $finalStrategy")
+        
+        return finalStrategy
     }
 
     private fun loadCmds(): List<String> {

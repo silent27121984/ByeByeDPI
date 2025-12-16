@@ -126,9 +126,25 @@ object ServiceDomainsUtils {
             }
             "discord" -> {
                 domains.addAll(listOf(
+                    "dis.gd",
+                    "discord.co",
+                    "discord.app",
+                    "discord.dev",
+                    "discord.new",
+                    "discord.gift",
+                    "discord.gifts",
+                    "discord.store",
+                    "discord.design",
+                    "click.discord.com",
                     "discordapp.com",
-                    "discord.gg",
-                    "discordcdn.com"
+                    "discordcdn.com",
+                    "discordsez.com",
+                    "discordsays.com",
+                    "discordmerch.com",
+                    "discordpartygames.com",
+                    "discordactivities.com",
+                    "stable.dl2.discordapp.net",
+                    "discord-attachments-uploads-prd.storage.googleapis.com"
                 ))
             }
         }

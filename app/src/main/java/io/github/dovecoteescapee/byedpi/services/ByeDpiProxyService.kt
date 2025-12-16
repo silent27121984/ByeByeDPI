@@ -79,6 +79,16 @@ class ByeDpiProxyService : LifecycleService() {
                 START_NOT_STICKY
             }
 
+            null -> {
+                // Android может автоматически перезапустить сервис с null Intent
+                // В этом случае просто останавливаем сервис, чтобы избежать проблем
+                Log.w(TAG, "Received null action (likely auto-restart), stopping service")
+                lifecycleScope.launch {
+                    stopSelf()
+                }
+                START_NOT_STICKY
+            }
+            
             else -> {
                 Log.w(TAG, "Unknown action: $action")
                 START_NOT_STICKY
@@ -235,13 +245,18 @@ class ByeDpiProxyService : LifecycleService() {
 
         proxyJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
+                // Устанавливаем статус Connected сразу после запуска прокси
+                // startProxy() блокирует выполнение, пока прокси работает
+                updateStatus(ServiceStatus.Connected)
+                
                 val code = proxy.startProxy(preferences)
-                delay(500)
-
+                
+                // Когда startProxy() возвращается, прокси завершился
                 if (code != 0) {
                     Log.e(TAG, "Proxy stopped with code $code")
                     updateStatus(ServiceStatus.Failed)
                 } else {
+                    Log.i(TAG, "Proxy stopped normally (code 0)")
                     updateStatus(ServiceStatus.Disconnected)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -253,6 +268,8 @@ class ByeDpiProxyService : LifecycleService() {
                 Log.e(TAG, "Error in proxy execution", e)
                 updateStatus(ServiceStatus.Failed)
             } finally {
+                // Останавливаем сервис после завершения прокси
+                // Это нужно, чтобы сервис не оставался висеть после завершения прокси
                 stopSelf()
             }
         }
